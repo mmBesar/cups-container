@@ -57,26 +57,33 @@ jobs:
             echo "already_built=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── 2. Build & push multi-arch image ──────────────────────────────────────
+  # ── 2. Build & push — native runners per arch ─────────────────────────────
   build:
     name: Build (${{ matrix.platform }})
-    runs-on: ubuntu-latest
     needs: get-version
-    if: needs.get-version.outputs.already_built == 'false'
+    if: needs.get-version.outputs.already_built == 'false' || github.event_name == 'push'
 
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
-          - linux/riscv64
+        include:
+          - platform: linux/amd64
+            runs-on: ubuntu-latest
+          - platform: linux/arm64
+            runs-on: ubuntu-24.04-arm
+          - platform: linux/riscv64
+            runs-on: ubuntu-24.04-riscv64   # RISE RISC-V native runner
+
+    runs-on: ${{ matrix.runs-on }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up QEMU
+      # QEMU only needed on amd64 runner as a fallback safety net;
+      # arm64 and riscv64 are native so QEMU is a no-op for their own arch.
+      - name: Set up QEMU (amd64 runner only)
+        if: matrix.platform == 'linux/amd64'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
@@ -147,32 +154,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate image metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            # Exact CUPS package version  e.g.  2.4.7-1+b1
-            type=raw,value=${{ needs.get-version.outputs.cups_version }}
-            # Major.minor only            e.g.  2.4
-            type=raw,value=${{ needs.get-version.outputs.cups_version }},enable=true,suffix=,prefix=
-            # Rolling latest
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=cups-container
-            org.opencontainers.image.description=Self-hosted CUPS print server with HP/HPLIP support
-            org.opencontainers.image.url=https://github.com/mmBesar/cups-container
-            org.opencontainers.image.source=https://github.com/mmBesar/cups-container
-            org.opencontainers.image.licenses=MIT
-
       - name: Create and push multi-arch manifest
         run: |
           CUPS_VERSION="${{ needs.get-version.outputs.cups_version }}"
-          # Build the digest arguments list
           DIGESTS=$(ls /tmp/digests | awk '{print "${{ env.IMAGE_NAME }}@sha256:"$1}')
 
-          # Push version tag
           docker buildx imagetools create \
             --tag "${{ env.IMAGE_NAME }}:${CUPS_VERSION}" \
             --tag "${{ env.IMAGE_NAME }}:latest" \
