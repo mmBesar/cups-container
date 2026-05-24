@@ -39,6 +39,8 @@ jobs:
                    | grep Candidate \
                    | awk '{print \$2}'")
           echo "Resolved CUPS version: ${CUPS_VERSION}"
+          # Strip Debian backport suffix only (e.g. 2.4.10-3+deb13u2 → 2.4.10-3)
+          CUPS_VERSION="${CUPS_VERSION%%+*}"
           echo "cups_version=${CUPS_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
@@ -161,12 +163,18 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           CUPS_VERSION="${{ needs.get-version.outputs.cups_version }}"
-          DIGESTS=$(ls /tmp/digests | awk '{print "${{ env.IMAGE_NAME }}@sha256:"$1}')
+
+          # Build --amend arguments from each digest file
+          AMEND_ARGS=()
+          for digest_file in /tmp/digests/*; do
+            digest=$(basename "$digest_file")
+            AMEND_ARGS+=(--amend "${{ env.IMAGE_NAME }}@sha256:${digest}")
+          done
 
           docker buildx imagetools create \
             --tag "${{ env.IMAGE_NAME }}:${CUPS_VERSION}" \
             --tag "${{ env.IMAGE_NAME }}:latest" \
-            $DIGESTS
+            "${AMEND_ARGS[@]}"
 
       - name: Inspect final manifest
         run: |
