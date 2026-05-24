@@ -13,6 +13,10 @@ on:
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   IMAGE_NAME: ghcr.io/mmbesar/cups-container
 
