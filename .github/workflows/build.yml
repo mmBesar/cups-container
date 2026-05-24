@@ -164,17 +164,17 @@ jobs:
         run: |
           CUPS_VERSION="${{ needs.get-version.outputs.cups_version }}"
 
-          # Build --amend arguments from each digest file
-          AMEND_ARGS=()
+          # Build source list from each digest file
+          SOURCES=()
           for digest_file in /tmp/digests/*; do
             digest=$(basename "$digest_file")
-            AMEND_ARGS+=(--amend "${{ env.IMAGE_NAME }}@sha256:${digest}")
+            SOURCES+=("${{ env.IMAGE_NAME }}@sha256:${digest}")
           done
 
           docker buildx imagetools create \
             --tag "${{ env.IMAGE_NAME }}:${CUPS_VERSION}" \
             --tag "${{ env.IMAGE_NAME }}:latest" \
-            "${AMEND_ARGS[@]}"
+            "${SOURCES[@]}"
 
       - name: Inspect final manifest
         run: |
